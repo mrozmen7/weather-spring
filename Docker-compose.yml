@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: weather-postgres-db
+    restart: always
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 3014
+    ports:
+      - "5433:5432"
+    volumes:
+      - weather_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    container_name: weather-app
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5433/postgres
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: 3014
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_SHOW_SQL: "true"
+      SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: "true"
+      SPRING_JPA_PROPERTIES_HIBERNATE_DEFAULT_SCHEMA: weather
+      WEATHER_API_URL: http://api.weatherstack.com/current
+      WEATHER_API_KEY: 216142cadf02819e6f4b74ff41bd
+
+volumes:
+  weather_data:
