@@ -11,7 +11,8 @@ import org.springframework.context.annotation.ComponentScan;
 public class WeatherApplication {
 
 	public static void main(String[] args) {
-
+		io.github.cdimascio.dotenv.Dotenv dotenv = io.github.cdimascio.dotenv.Dotenv.load();
+		System.setProperty("WEATHER_STACK_API_KEY", dotenv.get("WEATHER_STACK_API_KEY"));
 		SpringApplication.run(WeatherApplication.class, args);
 	}
 
