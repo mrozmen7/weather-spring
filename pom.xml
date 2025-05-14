@@ -73,13 +73,6 @@
             <scope>runtime</scope>
         </dependency>
 
-<!--        PostSQL-->
-        <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-            <version>42.7.3</version>
-        </dependency>
-
         <!-- LOMBOK-->
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -112,6 +105,7 @@
             <dependency>
                 <groupId>com.h2database</groupId>
                 <artifactId>h2</artifactId>
+                <version>2.2.224</version>
                 <scope>runtime</scope>
             </dependency>
 
