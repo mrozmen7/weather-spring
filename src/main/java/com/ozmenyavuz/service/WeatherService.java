@@ -2,11 +2,13 @@ package com.ozmenyavuz.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ozmenyavuz.constans.WeatherApiProperties;
+import com.ozmenyavuz.config.WeatherStackConfig;
+import com.ozmenyavuz.constans.Constants;
 import com.ozmenyavuz.dto.WeatherDto;
 import com.ozmenyavuz.dto.WeatherResponse;
 import com.ozmenyavuz.model.WeatherEntity;
 import com.ozmenyavuz.repository.WeatherRepository;
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -19,48 +21,66 @@ import java.util.Optional;
 public class WeatherService {
 
     private final WeatherRepository weatherRepository; // Spring
-    private final RestTemplate restTemplate; // Spring
-    private final WeatherApiProperties weatherApiProperties; //
+    private final RestTemplate restTemplate; // Spring Dis Api icin HTTP iletimi kurmak icin//
     private final ObjectMapper objectMapper = new ObjectMapper(); // Spring
 
     public WeatherService(WeatherRepository weatherRepository,
-                          RestTemplate restTemplate,
-                          WeatherApiProperties weatherApiProperties) {
+                          RestTemplate restTemplate
+                          ) {
         this.weatherRepository = weatherRepository;
         this.restTemplate = restTemplate;
-        this.weatherApiProperties = weatherApiProperties;
+
     }
 
 
     // 1 ANA METOT
 
+    // Memorimiz sismemsi daha pratik ve esnek calismasi icin ek bir sorgu metotu
+
     public WeatherDto getWeatherByCityName(String city) {
+        // 1. Veritabanında bu şehir için en son sorgulanmış kaydı bul: SQL komutu
         Optional<WeatherEntity> weatherEntityOptional =
                 weatherRepository.findFirstByRequestedCityNameOrderByLocalDateTimeDesc(city);
-        //SELECT * FROM weather WHERE city = ? ORDER BY local_time DESC LIMIT 1 gibi bir SQL
 
-        return weatherEntityOptional.map(weather -> {
-            boolean isOld = weather.getLocalDateTime() // Verinin sisteme kaydedildiği zamanı döndürür.
-                    .isBefore(
-                            LocalDateTime.now().minusMinutes(30)); //Şu anki zaman/   Cache 30 dakika öncesine bir zaman hesaplıyoruz.
+        // 2. Eğer kayıt varsa kontrol et: 30 dakikadan eski mi?
+        return weatherEntityOptional.map(entity -> {
+            boolean isOld = entity.getLocalDateTime()
+                    .isBefore(LocalDateTime.now().minusMinutes(30));
+
             if (isOld) {
-                return WeatherDto.convert(getWeatherFromWeatherStack(city));
+                // Veri eskiyse: API’den yeni veri çek ve DTO’ya çevir
+                WeatherEntity freshEntity = getWeatherFromWeatherStack(city);
+                return WeatherDto.convert(freshEntity);
             }
-            // 	Eğer veri 30 dakikadan eskiyse, API’ye yeni istek gönderilir:
-            //	•	getWeatherFromWeatherStack(city): WeatherStack API’den güncel veri çeker.
-            //	•	WeatherDto.convert(...): Dış API’den gelen WeatherEntity nesnesi, DTO’ya çevrilip döndürülür.
 
-            return WeatherDto.convert(weather); // VERI GUNCELSE veri WeatherDto’ya çevrilerek döndürülür.
-        }).orElseGet(() -> WeatherDto.convert(getWeatherFromWeatherStack(city))); // HIC KAYIT YOKSA YINE DIS API YE GIT
+            // Veri güncelse: direkt DTO’ya çevir ve döndür
+            return WeatherDto.convert(entity);
+
+        }).orElseGet(() -> {
+            // 3. Hiç kayıt yoksa: API’den veri çek, kaydet ve döndür
+            WeatherEntity freshEntity = getWeatherFromWeatherStack(city);
+            return WeatherDto.convert(freshEntity);
+        });
     }
 
 
     // 2 GET ATAR SERVICE = WeatherStack API CEKME
     // 🌍 WeatherStack API’den güncel hava durumu verisi alır ve işleyip veritabanına kaydetmek üzere hazırlar.
+    // 4  Tam URL Üretici
 
+    private String getWeatherStackUrl(String city) {
+        return WeatherStackConfig.API_URL
+                + Constants.ACCESS_KEY_PARAM + WeatherStackConfig.API_KEY
+                + Constants.ACCESS_QUERY_PARAM + city;
+    }
+
+    @RateLimiter(name = "basic", fallbackMethod = "fallbackWeather")
     private WeatherEntity getWeatherFromWeatherStack(String city) {
-        String fullUrl = getWeatherStackUrl(city); // Dış API’ye istek atmak için tam URL’yi üretir.
-        ResponseEntity<String> responseEntity = restTemplate.getForEntity(fullUrl, String.class);
+        String url = WeatherStackConfig.API_URL
+                + Constants.ACCESS_KEY_PARAM + WeatherStackConfig.API_KEY
+                + Constants.ACCESS_QUERY_PARAM + city;
+
+        ResponseEntity<String> responseEntity = restTemplate.getForEntity(url, String.class);
         //getForEntity → dış API’ye GET isteği atar
 
         String json = responseEntity.getBody();
@@ -73,37 +93,49 @@ public class WeatherService {
                 throw new RuntimeException("Hatalı veri geldi. API key doğru mu? Şehir geçerli mi?");
             }
 
-            // JSON’dan elde edilen Java nesnesini veritabanına yazmak için saveWeatherEntity(...) metoduna gönderiyoruz
+            // JSON’dan elde edilen Java nesnesini veritabanına yazmak için saveWeatherEntity(...) metoduna gönderiyoruz.
             return saveWeatherEntity(city, weatherResponse); //API’den gelen doğru veri şimdi veritabanına yazılacak
         } catch (JsonProcessingException e) {
             throw new RuntimeException("JSON parse hatası: " + e.getMessage(), e);
         }
+
     }
+
 
     // 3 DB’ye Kaydetme Metodu
     // API’den gelen veriyi WeatherEntity nesnesine çevirip veritabanına kaydeder.
+    private WeatherEntity saveWeatherEntity(String requestedCity, WeatherResponse weatherResponse) {
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    private WeatherEntity saveWeatherEntity(String city, WeatherResponse weatherResponse) {
-        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"); //WeatherStack API tarihleri string olarak gönderir, biz LocalDateTime’a çevirmek istiyoruz.
+        // API'den gelen verileri parçalayıp entity'ye mapliyoruz:
+        String cityName = weatherResponse.location().name();
+        String country = weatherResponse.location().country();
+        Integer temperature = weatherResponse.current().temperature();
+        Integer humidity = weatherResponse.current().humidity();
+        Double windSpeed = weatherResponse.current().wind_speed();
+        String description = weatherResponse.current().weather_descriptions().isEmpty()
+                ? null
+                : weatherResponse.current().weather_descriptions().get(0);
+        String iconUrl = weatherResponse.current().weather_icons().isEmpty()
+                ? null
+                : weatherResponse.current().weather_icons().get(0);
+        LocalDateTime responseLocalTime = LocalDateTime.now();
+        LocalDateTime localDateTime = LocalDateTime.parse(weatherResponse.location().localTime(), dateTimeFormatter);
 
         WeatherEntity weatherEntity = new WeatherEntity(
-                city,
-                weatherResponse.location().name(), // sehir adi
-                weatherResponse.location().country(), // ulkesi
-                weatherResponse.current().temperature(), // sicaklik
-                LocalDateTime.now(), // APIâ€™nin verdiÄŸi lokal saat (Ã¶rn. "2025-04-02 13:00")
-                LocalDateTime.parse(weatherResponse.location().localTime(), dateTimeFormatter)
+                requestedCity,     // Kullanıcının yazdığı şehir (örnek: "ankara")
+                cityName,          // API'den gelen düzgün şehir adı
+                country,           // Ülke adı
+                temperature,       // Sıcaklık
+                humidity,          // Nem
+                windSpeed,         // Rüzgar hızı
+                description,       // Hava açıklaması
+                iconUrl,           // İkon resmi
+                localDateTime,     // Şehirdeki saat
+                responseLocalTime  // Bizim cevabı oluşturduğumuz an
         );
 
-        return weatherRepository.save(weatherEntity); // Veritabanına Kaydet
-        // 	•	Oluşturulan entity, veritabanına yazılır.
-        //	•	Geriye kayıt edilmiş hali (ID dahil) döndürülür.
-    }
-
-    // 4  Tam URL Üretici
-
-    private String getWeatherStackUrl(String city) {
-        return weatherApiProperties.buildUrlForCity(city);
+        return weatherRepository.save(weatherEntity);
     }
 }
 
