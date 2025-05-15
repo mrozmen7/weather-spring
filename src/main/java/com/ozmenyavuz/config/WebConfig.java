@@ -9,12 +9,8 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/v1/api/**")
-                .allowedOrigins(
-                        "http://localhost:5173",
-                        "https://teal-parfait-b77458.netlify.app"
-                )
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                .allowedHeaders("*");
+        registry.addMapping("/**")
+                .allowedOrigins("https://teal-parfait-b77458.netlify.app")
+                .allowedMethods("*");
     }
 }
