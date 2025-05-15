@@ -11,8 +11,8 @@ public class WebConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/v1/api/**")
                 .allowedOrigins(
-                        "http://localhost:5173", // Lokal geliştirme için
-                        "https://fancy-griffin-6e120b.netlify.app" // ✅ Netlify frontend adresin
+                        "http://localhost:5173",
+                        "https://preeminent-raindrop-7b339a.netlify.app" // ✅ yeni Netlify URL'in
                 )
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*");
