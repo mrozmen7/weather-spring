@@ -12,7 +12,8 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addMapping("/v1/api/**")
                 .allowedOrigins(
                         "http://localhost:5173",
-                        "https://preeminent-raindrop-7b339a.netlify.app" // ✅ yeni Netlify URL'in
+                        "https://nimble-kleicha-cf9f3c.netlify.app",
+                        "https://jocular-piroshki-f12781.netlify.app" // 👈 YENİ EKLEDİĞİN ADRES
                 )
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*");
