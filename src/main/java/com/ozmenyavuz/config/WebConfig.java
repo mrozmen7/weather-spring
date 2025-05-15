@@ -13,7 +13,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOrigins(
                         "http://localhost:5173",
                         "https://nimble-kleicha-cf9f3c.netlify.app",
-                        "https://jocular-piroshki-f12781.netlify.app" // 👈 YENİ EKLEDİĞİN ADRES
+                        "https://jocular-piroshki-f12781.netlify.app" //
                 )
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*");
