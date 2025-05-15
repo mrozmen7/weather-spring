@@ -12,7 +12,7 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addMapping("/v1/api/**")
                 .allowedOrigins(
                         "http://localhost:5173", // Lokal geliştirme için
-                        "https://soft-dragon-628aff.netlify.app" // ✅ Netlify frontend adresin
+                        "https://fancy-griffin-6e120b.netlify.app" // ✅ Netlify frontend adresin
                 )
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*");
